@@ -299,6 +299,23 @@ class SirenEntity {
   }
 
   /**
+   * Adds a list of entities all with the same rel
+   * @param {(String|String[])} rel
+   * @param {(SirenEntity[]|SirenLink[])} entities
+   * @return {SirenEntity}
+   */
+  addEntities(rel, entities) {
+    if (this._entities == null) {
+      this._entities = [];
+    }
+    const n = entities ? entities.length : 0;
+    for (let i = 0; i < n; ++i) {
+      this._entities.push(entities[i].copy().setRel(rel));
+    }
+    return this;
+  }
+
+  /**
    * Adds an action.
    * @param {String} name
    * @param {SirenAction} action
