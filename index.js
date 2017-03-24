@@ -8,12 +8,158 @@
 const METHOD = new Set(['GET', 'PUT', 'POST', 'DELETE', 'PATCH']);
 const METHOD_LIST = Array.from(METHOD).join(', ');
 
-function ensureArray(value) {
-  if (!Array.isArray(value)) {
-    return [value];
+function normalizeRel(rel) {
+  if (!Array.isArray(rel)) {
+    return [rel.uri || rel];
   } else {
-    return value;
+    return rel;
   }
+}
+
+/**
+ * Siren link builder.
+ */
+class SirenLink {
+
+  /**
+   * Constructs a new Siren link builder.
+   */
+  constructor() {
+    this._rel = undefined;
+    this._class = undefined;
+    this._href = undefined;
+    this._title = undefined;
+    this._type = undefined;
+  }
+
+  /**
+   * Sets the rel.
+   * @param {(String|String[])} rel
+   * @return {SirenLink}
+   */
+  setRel(rel) {
+    this._rel = normalizeRel(rel);
+    return this;
+  }
+
+  /**
+   * Adds a class.
+   * @param {String} className
+   * @return {SirenLink}
+   */
+  addClass(className) {
+    if (this._class == null) {
+      this._class = [];
+    }
+    this._class.push(className);
+    return this;
+  }
+
+  /**
+   * Sets the href.
+   * @param {String} href
+   * @return {SirenLink}
+   */
+  setHref(href) {
+    this._href = href;
+    return this;
+  }
+
+  /**
+   * Sets the title.
+   * @param {String} title
+   * @return {SirenLink}
+   */
+  setTitle(title) {
+    this._title = title;
+    return this;
+  }
+
+  /**
+   * Sets the type.
+   * @param {String} type
+   * @return {SirenLink}
+   */
+  setType(type) {
+    this._type = type;
+    return this;
+  }
+
+  /**
+   * Constructs a shallow copy.
+   * @return {SirenLink}
+   */
+  copy() {
+    const copy = new SirenLink();
+    copy._rel = this._rel;
+    copy._class = this._class;
+    copy._href = this._href;
+    copy._title = this._title;
+    copy._type = this._type;
+    return copy;
+  }
+
+  /**
+   * Constructs a deep copy.
+   * @return {SirenLink}
+   */
+  clone() {
+    const clone = new SirenLink();
+    if (this._rel != null) {
+      clone._rel = this._rel.slice();
+    }
+    if (this._class != null) {
+      clone._class = this._class.slice();
+    }
+    if (this._href != null) {
+      clone._href = this._href;
+    }
+    if (this._title != null) {
+      clone._title = this._title;
+    }
+    if (this._type != null) {
+      clone._type = this._type;
+    }
+    return clone;
+  }
+
+  /**
+   * Builds the Siren link.
+   * @return {object}
+   */
+  toJSON() {
+    const json = {};
+    if (this._rel != null) {
+      json.rel = this._rel;
+    } else {
+      throw new Error('link MUST have a rel');
+    }
+    if (this._class != null) {
+      json.class = this._class;
+    }
+    if (this._href != null) {
+      json.href = this._href;
+    } else {
+      throw new Error('link MUST have an href');
+    }
+    if (this._title != null) {
+      json.title = this._title;
+    }
+    if (this._type != null) {
+      json.type = this._type;
+    }
+    return json;
+  }
+
+  /**
+   * Constructs an empty Siren link builder.
+   * @return {SirenLink}
+   * @alias module:SirenBuilder.link
+   */
+  static create() {
+    return new SirenLink();
+  }
+
 }
 
 /**
@@ -24,7 +170,7 @@ class SirenAction {
   /**
    * Constructs a new Siren action builder.
    */
-  constructor() {
+  constructor(delegate, params) {
     this._name = undefined;
     this._class = undefined;
     this._method = undefined;
@@ -32,6 +178,8 @@ class SirenAction {
     this._title = undefined;
     this._type = undefined;
     this._fields = undefined;
+    this._delegate = delegate;
+    this._params = params;
   }
 
   /**
@@ -72,11 +220,13 @@ class SirenAction {
 
   /**
    * Sets the href.
-   * @param {String} href
+   * @param {String|relation.Type} href
    * @return {SirenLink}
    */
   setHref(href) {
-    this._href = href;
+    this._href = href.uri ?
+      this._delegate.resolveUrl(href, this._params, { method: this._method }) :
+      href;
     return this;
   }
 
@@ -206,8 +356,8 @@ class SirenAction {
    * @return {SirenAction}
    * @alias module:SirenBuilder.action
    */
-  static create() {
-    return new SirenAction();
+  static create(delegate, params) {
+    return new SirenAction(delegate, params);
   }
 
 }
@@ -220,13 +370,15 @@ class SirenEntity {
   /**
    * Constructs a new Siren entity builder.
    */
-  constructor() {
+  constructor(delegate, params) {
     this._class = undefined;
     this._rel = undefined;
     this._properties = undefined;
     this._entities = undefined;
     this._actions = undefined;
     this._links = undefined;
+    this._delegate = delegate;
+    this._params = params;
   }
 
   /**
@@ -248,7 +400,7 @@ class SirenEntity {
    * @return {SirenEntity}
    */
   setRel(rel) {
-    this._rel = ensureArray(rel);
+    this._rel = normalizeRel(rel);
     return this;
   }
 
@@ -319,9 +471,13 @@ class SirenEntity {
    * Adds an action.
    * @param {String} name
    * @param {SirenAction} action
+   * @param {object} opt forwarded to delegate methods
    * @return {SirenEntity}
    */
-  addAction(name, action) {
+  addAction(name, action, opt) {
+    if (!this._delegate.shouldAddAction(name, this._params)) {
+      return this;
+    }
     if (this._actions == null) {
       this._actions = [];
     }
@@ -336,15 +492,22 @@ class SirenEntity {
 
   /**
    * Adds a link.
-   * @param {(String|String[])} rel
-   * @param {SirenLink} link
+   * @param {relation.Type} rel
+   * @param {String|null} alias
+   * @param {object} opt forwarded to delegate methods
    * @return {SirenEntity}
    */
-  addLink(rel, link) {
+  addLink(rel, alias, opt) {
+    if (!this._delegate.shouldAddLink(rel, this._params, opt)) {
+      return this;
+    }
     if (this._links == null) {
       this._links = [];
     }
-    this._links.push(link.copy().setRel(rel));
+    const link = SirenLink.create()
+      .setRel(alias || rel)
+      .setHref(this._delegate.resolveUrl(rel, this._params, opt));
+    this._links.push(link);
     return this;
   }
 
@@ -428,8 +591,8 @@ class SirenEntity {
    * @return {SirenEntity}
    * @alias module:SirenBuilder.entity
    */
-  static create() {
-    return new SirenEntity();
+  static create(delegate, params) {
+    return new SirenEntity(delegate, params);
   }
 
 }
@@ -579,153 +742,20 @@ class SirenField {
 
 }
 
-/**
- * Siren link builder.
- */
-class SirenLink {
+module.exports = (nullableDelegate) => {
+  const delegate = nullableDelegate || {};
 
-  /**
-   * Constructs a new Siren link builder.
-   */
-  constructor() {
-    this._rel = undefined;
-    this._class = undefined;
-    this._href = undefined;
-    this._title = undefined;
-    this._type = undefined;
-  }
+  delegate.resolveUrl = delegate.resolveUrl ||
+    ((type /* params, opt */) => type);
+  delegate.shouldAddAction = delegate.shouldAddAction ||
+    ((/* type, params, opt */) => true);
+  delegate.shouldAddLink = delegate.shouldAddLink ||
+    ((/* type, params, opt */) => true);
 
-  /**
-   * Sets the rel.
-   * @param {(String|String[])} rel
-   * @return {SirenLink}
-   */
-  setRel(rel) {
-    this._rel = ensureArray(rel);
-    return this;
-  }
-
-  /**
-   * Adds a class.
-   * @param {String} className
-   * @return {SirenLink}
-   */
-  addClass(className) {
-    if (this._class == null) {
-      this._class = [];
-    }
-    this._class.push(className);
-    return this;
-  }
-
-  /**
-   * Sets the href.
-   * @param {String} href
-   * @return {SirenLink}
-   */
-  setHref(href) {
-    this._href = href;
-    return this;
-  }
-
-  /**
-   * Sets the title.
-   * @param {String} title
-   * @return {SirenLink}
-   */
-  setTitle(title) {
-    this._title = title;
-    return this;
-  }
-
-  /**
-   * Sets the type.
-   * @param {String} type
-   * @return {SirenLink}
-   */
-  setType(type) {
-    this._type = type;
-    return this;
-  }
-
-  /**
-   * Constructs a shallow copy.
-   * @return {SirenLink}
-   */
-  copy() {
-    const copy = new SirenLink();
-    copy._rel = this._rel;
-    copy._class = this._class;
-    copy._href = this._href;
-    copy._title = this._title;
-    copy._type = this._type;
-    return copy;
-  }
-
-  /**
-   * Constructs a deep copy.
-   * @return {SirenLink}
-   */
-  clone() {
-    const clone = new SirenLink();
-    if (this._rel != null) {
-      clone._rel = this._rel.slice();
-    }
-    if (this._class != null) {
-      clone._class = this._class.slice();
-    }
-    if (this._href != null) {
-      clone._href = this._href;
-    }
-    if (this._title != null) {
-      clone._title = this._title;
-    }
-    if (this._type != null) {
-      clone._type = this._type;
-    }
-    return clone;
-  }
-
-  /**
-   * Builds the Siren link.
-   * @return {object}
-   */
-  toJSON() {
-    const json = {};
-    if (this._rel != null) {
-      json.rel = this._rel;
-    } else {
-      throw new Error('link MUST have a rel');
-    }
-    if (this._class != null) {
-      json.class = this._class;
-    }
-    if (this._href != null) {
-      json.href = this._href;
-    } else {
-      throw new Error('link MUST have an href');
-    }
-    if (this._title != null) {
-      json.title = this._title;
-    }
-    if (this._type != null) {
-      json.type = this._type;
-    }
-    return json;
-  }
-
-  /**
-   * Constructs an empty Siren link builder.
-   * @return {SirenLink}
-   * @alias module:SirenBuilder.link
-   */
-  static create() {
-    return new SirenLink();
-  }
-
-}
-
-exports.action = SirenAction.create;
-exports.entity = SirenEntity.create;
-exports.field = SirenField.create;
-exports.link = SirenLink.create;
+  return {
+    action: (params) => SirenAction.create(delegate, params),
+    entity: (params) => SirenEntity.create(delegate, params),
+    field: SirenField.create,
+    link: SirenLink.create,
+  };
+};
