@@ -469,17 +469,23 @@ class SirenEntity {
 
   /**
    * Adds an action.
-   * @param {String} name
+   * @param {relation.Type} rel
    * @param {SirenAction} action
    * @param {object} opt forwarded to delegate methods
    * @return {SirenEntity}
    */
-  addAction(name, action, opt) {
-    if (!this._delegate.shouldAddAction(name, this._params)) {
+  addAction(rel, action, opt) {
+    if (!this._delegate.shouldAddAction(rel, this._params, opt)) {
       return this;
     }
     if (this._actions == null) {
       this._actions = [];
+    }
+    const name = rel.hypermediaActionName || rel;
+    if (rel.httpMethod) {
+      action
+        .setMethod(rel.httpMethod)
+        .setHref(this._delegate.resolveUrl(rel, this._params, opt));
     }
     for (let i = 0; i < this._actions.length; ++i) {
       if (this._actions[i]._name === name) {
