@@ -10,7 +10,7 @@ const METHOD_LIST = Array.from(METHOD).join(', ');
 
 function normalizeRel(rel) {
   if (!Array.isArray(rel)) {
-    return [rel.uri || rel];
+    return [rel.hypermediaRel || rel];
   } else {
     return rel;
   }
@@ -224,7 +224,7 @@ class SirenAction {
    * @return {SirenLink}
    */
   setHref(href) {
-    this._href = href.uri ?
+    this._href = href.hypermediaRel ?
       this._delegate.resolveUrl(href, this._params, { method: this._method }) :
       href;
     return this;
