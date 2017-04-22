@@ -474,8 +474,8 @@ class SirenEntity {
    * @param {object} opt forwarded to delegate methods
    * @return {SirenEntity}
    */
-  addAction(rel, action, opt) {
-    if (!this._delegate.shouldAddAction(rel, this._params, opt)) {
+  * addAction(rel, action, opt) {
+    if (!(yield this._delegate.shouldAddAction(rel, this._params, opt))) {
       return this;
     }
     if (this._actions == null) {
@@ -503,8 +503,8 @@ class SirenEntity {
    * @param {object} opt forwarded to delegate methods
    * @return {SirenEntity}
    */
-  addLink(rel, alias, opt) {
-    if (!this._delegate.shouldAddLink(rel, this._params, opt)) {
+  * addLink(rel, alias, opt) {
+    if (!(yield this._delegate.shouldAddLink(rel, this._params, opt))) {
       return this;
     }
     if (this._links == null) {
