@@ -163,6 +163,151 @@ class SirenLink {
 }
 
 /**
+ * Siren field builder.
+ */
+class SirenField {
+
+  /**
+   * Constructs a new Siren field builder.
+   */
+  constructor() {
+    this._name = undefined;
+    this._class = undefined;
+    this._type = undefined;
+    this._value = undefined;
+    this._title = undefined;
+  }
+
+  /**
+   * Sets the name.
+   * @param {String} name
+   * @return {SirenField}
+   */
+  setName(name) {
+    this._name = name;
+    return this;
+  }
+
+  /**
+   * Adds a class.
+   * @param {String} className
+   * @return {SirenField}
+   */
+  addClass(className) {
+    if (this._class == null) {
+      this._class = [];
+    }
+    this._class.push(className);
+    return this;
+  }
+
+  /**
+   * Sets the type.
+   * @param {String} type
+   * @return {SirenField}
+   */
+  setType(type) {
+    this._type = type;
+    return this;
+  }
+
+  /**
+   * Sets the value.
+   * @param {Any} value
+   * @return {SirenField}
+   */
+  setValue(value) {
+    this._value = value;
+    return this;
+  }
+
+
+  /**
+   * Sets the title.
+   * @param {String} title
+   * @return {SirenField}
+   */
+  setTitle(title) {
+    this._title = title;
+    return this;
+  }
+
+  /**
+   * Constructs a shallow copy.
+   * @return {SirenField}
+   */
+  copy() {
+    const copy = new SirenField();
+    copy._name = this._name;
+    copy._class = this._class;
+    copy._type = this._type;
+    copy._value = this._value;
+    copy._title = this._title;
+    return copy;
+  }
+
+  /**
+   * Constructs a deep copy.
+   * @return {SirenField}
+   */
+  clone() {
+    const clone = new SirenField();
+    if (this._name != null) {
+      clone._name = this._name;
+    }
+    if (this._class != null) {
+      clone._class = this._class.slice();
+    }
+    if (this._type != null) {
+      clone._type = this._type;
+    }
+    if (this._value != null) {
+      clone._value = this._value;
+    }
+    if (this._title != null) {
+      clone._title = this._title;
+    }
+    return clone;
+  }
+
+  /**
+   * Builds the Siren field.
+   * @return {object}
+   */
+  toJSON() {
+    const json = {};
+    if (this._name != null) {
+      json.name = this._name;
+    } else {
+      throw new Error('field MUST have a name');
+    }
+    if (this._class != null) {
+      json.class = this._class;
+    }
+    if (this._type != null) {
+      json.type = this._type;
+    }
+    if (this._value != null) {
+      json.value = this._value;
+    }
+    if (this._title != null) {
+      json.title = this._title;
+    }
+    return json;
+  }
+
+  /**
+   * Constructs an empty Siren field builder.
+   * @return {SirenField}
+   * @alias module:SirenBuilder.field
+   */
+  static create() {
+    return new SirenField();
+  }
+
+}
+
+/**
  * Siren action builder.
  */
 class SirenAction {
@@ -172,6 +317,7 @@ class SirenAction {
    */
   constructor(delegate, params) {
     this._name = undefined;
+    this._rel = undefined;
     this._class = undefined;
     this._method = undefined;
     this._href = undefined;
@@ -182,6 +328,9 @@ class SirenAction {
     this._params = params;
   }
 
+  get rel() { return this._rel; }
+  get name() { return this._name; }
+
   /**
    * Sets the name.
    * @param {String} name
@@ -189,6 +338,23 @@ class SirenAction {
    */
   setName(name) {
     this._name = name;
+    return this;
+  }
+
+  /**
+   * Sets the rel.
+   * @param {(String|String[])} rel
+   * @return {SirenLink}
+   */
+  setRel(rel) {
+    this._rel = rel;
+    if (this._name === undefined && rel.hypermediaActionName) {
+      this.setName(rel.hypermediaActionName);
+    }
+    if (rel.httpMethod) {
+      this.setMethod(rel.httpMethod);
+      this.setHref(this._delegate.resolveUrl(rel, this._params));
+    }
     return this;
   }
 
@@ -253,10 +419,10 @@ class SirenAction {
   /**
    * Adds a field.
    * @param {String} name
-   * @param {SirenField} field
+   * @param {(SirenField) => SirenField} defineField
    * @return {SirenAction}
    */
-  addField(name, field) {
+  addField(name, defineField) {
     if (this._fields == null) {
       this._fields = [];
     }
@@ -265,7 +431,15 @@ class SirenAction {
         throw new Error('field name MUST be unique');
       }
     }
-    this._fields.push(field.copy().setName(name));
+    const f = defineField(SirenField.create().setName(name));
+    if (this._rel) {
+      f.setValue(this._delegate.defaultFieldValue({
+        fieldName: name,
+        rel: this._rel,
+        params: this._params,
+      }));
+    }
+    this._fields.push(f);
     return this;
   }
 
@@ -469,30 +643,27 @@ class SirenEntity {
 
   /**
    * Adds an action.
-   * @param {relation.Type} rel
-   * @param {SirenAction} action
-   * @param {object} opt forwarded to delegate methods
+   * @param {(SirenAction) => SirenAction} defineAction
    * @return {SirenEntity}
    */
-  * addAction(rel, action, opt) {
-    if (!(yield this._delegate.shouldAddAction(rel, this._params, opt))) {
+  * addAction(defineAction) {
+    const action = defineAction(
+      SirenAction.create(this._delegate, this._params));
+    const rel = action.rel;
+    const name = action.name;
+
+    if (!(yield this._delegate.shouldAddAction(rel, this._params))) {
       return this;
     }
     if (this._actions == null) {
       this._actions = [];
-    }
-    const name = rel.hypermediaActionName || rel;
-    if (rel.httpMethod) {
-      action
-        .setMethod(rel.httpMethod)
-        .setHref(this._delegate.resolveUrl(rel, this._params, opt));
     }
     for (let i = 0; i < this._actions.length; ++i) {
       if (this._actions[i]._name === name) {
         throw new Error('action name MUST be unique');
       }
     }
-    this._actions.push(action.copy().setName(name));
+    this._actions.push(action);
     return this;
   }
 
@@ -599,151 +770,6 @@ class SirenEntity {
    */
   static create(delegate, params) {
     return new SirenEntity(delegate, params);
-  }
-
-}
-
-/**
- * Siren field builder.
- */
-class SirenField {
-
-  /**
-   * Constructs a new Siren field builder.
-   */
-  constructor() {
-    this._name = undefined;
-    this._class = undefined;
-    this._type = undefined;
-    this._value = undefined;
-    this._title = undefined;
-  }
-
-  /**
-   * Sets the name.
-   * @param {String} name
-   * @return {SirenField}
-   */
-  setName(name) {
-    this._name = name;
-    return this;
-  }
-
-  /**
-   * Adds a class.
-   * @param {String} className
-   * @return {SirenField}
-   */
-  addClass(className) {
-    if (this._class == null) {
-      this._class = [];
-    }
-    this._class.push(className);
-    return this;
-  }
-
-  /**
-   * Sets the type.
-   * @param {String} type
-   * @return {SirenField}
-   */
-  setType(type) {
-    this._type = type;
-    return this;
-  }
-
-  /**
-   * Sets the value.
-   * @param {Any} value
-   * @return {SirenField}
-   */
-  setValue(value) {
-    this._value = value;
-    return this;
-  }
-
-
-  /**
-   * Sets the title.
-   * @param {String} title
-   * @return {SirenField}
-   */
-  setTitle(title) {
-    this._title = title;
-    return this;
-  }
-
-  /**
-   * Constructs a shallow copy.
-   * @return {SirenField}
-   */
-  copy() {
-    const copy = new SirenField();
-    copy._name = this._name;
-    copy._class = this._class;
-    copy._type = this._type;
-    copy._value = this._value;
-    copy._title = this._title;
-    return copy;
-  }
-
-  /**
-   * Constructs a deep copy.
-   * @return {SirenField}
-   */
-  clone() {
-    const clone = new SirenField();
-    if (this._name != null) {
-      clone._name = this._name;
-    }
-    if (this._class != null) {
-      clone._class = this._class.slice();
-    }
-    if (this._type != null) {
-      clone._type = this._type;
-    }
-    if (this._value != null) {
-      clone._value = this._value;
-    }
-    if (this._title != null) {
-      clone._title = this._title;
-    }
-    return clone;
-  }
-
-  /**
-   * Builds the Siren field.
-   * @return {object}
-   */
-  toJSON() {
-    const json = {};
-    if (this._name != null) {
-      json.name = this._name;
-    } else {
-      throw new Error('field MUST have a name');
-    }
-    if (this._class != null) {
-      json.class = this._class;
-    }
-    if (this._type != null) {
-      json.type = this._type;
-    }
-    if (this._value != null) {
-      json.value = this._value;
-    }
-    if (this._title != null) {
-      json.title = this._title;
-    }
-    return json;
-  }
-
-  /**
-   * Constructs an empty Siren field builder.
-   * @return {SirenField}
-   * @alias module:SirenBuilder.field
-   */
-  static create() {
-    return new SirenField();
   }
 
 }
