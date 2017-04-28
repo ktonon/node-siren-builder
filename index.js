@@ -682,8 +682,8 @@ class SirenEntity {
       this._links = [];
     }
     const link = SirenLink.create()
-      .setRel(alias || rel)
       .setHref(this._delegate.resolveUrl(rel, this._params, opt));
+    link.setRel(alias ? [alias, rel.hypermediaRel || rel] : rel);
     this._links.push(link);
     return this;
   }
