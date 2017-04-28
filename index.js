@@ -670,19 +670,25 @@ class SirenEntity {
   /**
    * Adds a link.
    * @param {relation.Type} rel
-   * @param {String|null} alias
+   * @option {String|null} alias
    * @param {object} opt forwarded to delegate methods
    * @return {SirenEntity}
    */
-  * addLink(rel, alias, opt) {
-    if (!(yield this._delegate.shouldAddLink(rel, this._params, opt))) {
+  * addLink(rel, opt = {}) {
+    const alias = opt.alias;
+
+    const params = opt.params ?
+      opt.params(this._params) :
+      this._params;
+
+    if (!(yield this._delegate.shouldAddLink(rel, params, opt))) {
       return this;
     }
     if (this._links == null) {
       this._links = [];
     }
     const link = SirenLink.create()
-      .setHref(this._delegate.resolveUrl(rel, this._params, opt));
+      .setHref(this._delegate.resolveUrl(rel, params, opt));
     link.setRel(alias ? [alias, rel.hypermediaRel || rel] : rel);
     this._links.push(link);
     return this;
